@@ -28,7 +28,7 @@ class FastFlowMergeSort {
 private:
     unsigned num_workers_;              // Number of FastFlow workers
     std::string temp_dir_;              // Directory for temporary files
-    int file_id_;                       // Counter for generating unique file names
+    std::atomic<int> file_id_;                       // Counter for generating unique file names
     size_t memory_limit_;               // Memory limit per worker
 
     /**
@@ -106,13 +106,10 @@ private:
                 if (read_success) {
                     size_t record_size = record.size();
 
-                    // Check if adding this record would exceed memory limit
-                    if (memory_used + record_size > memory_limit_) {
-                        continue_reading = false;
-                    } else {
-                        records->push_back(std::move(record));
-                        memory_used += record_size;
-                    }
+                    records->push_back(std::move(record));
+                    memory_used += record_size;
+                    continue_reading = memory_used < memory_limit_;
+
                 }
             }
 
@@ -472,10 +469,11 @@ public:
      */
     FastFlowMergeSort(unsigned num_workers)
         : num_workers_(num_workers), 
-          temp_dir_("./ff_tmp"), 
+          temp_dir_(createSortDirectory()), 
           file_id_(0) {
         
         // Calculate memory limit per worker
+        if (num_workers_ == 0) throw std::invalid_argument("Worker count must be positive");
         memory_limit_ = MAX_MEMORY_USAGE / num_workers_;
         
         // Create temporary directory

@@ -1,6 +1,9 @@
 #ifndef RECORD_STRUCTURE_HPP
 #define RECORD_STRUCTURE_HPP
 
+#include <cstdlib>
+#include <unistd.h>
+#include <filesystem>
 #include <cstring>     
 #include <chrono>
 #include <cstdint>
@@ -10,6 +13,12 @@
 #include <iostream>
 #include <fstream>
 #include <stdexcept>
+
+inline std::string createSortDirectory() {
+    std::string pattern = (std::filesystem::temp_directory_path() / "merge-sort-XXXXXX").string();
+    if (!mkdtemp(pattern.data())) throw std::runtime_error("Cannot create temporary directory");
+    return pattern;
+}
 
 // Payload size constraints
 constexpr uint32_t PAYLOAD_MIN = 8;
@@ -93,9 +102,10 @@ inline RecordPtr readRecord(std::ifstream& inFile) {
 
     // Read key and length separately
     inFile.read(reinterpret_cast<char*>(&key), sizeof(uint64_t));
+    if (inFile.eof() && inFile.gcount() == 0) return RecordPtr();
     inFile.read(reinterpret_cast<char*>(&len), sizeof(uint32_t));
 
-    if (!inFile) return RecordPtr(); // EOF or bad read
+    if (!inFile) throw std::runtime_error("Incomplete record header");
 
     // Validate payload length
     if (len < PAYLOAD_MIN || len > PAYLOAD_MAX) {
