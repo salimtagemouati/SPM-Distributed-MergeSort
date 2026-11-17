@@ -17,8 +17,10 @@ def read_records(filename: str) -> List[Tuple[int, bytes]]:
             while True:
                 # Read record header (key + length)
                 header = f.read(12)  # 8 bytes key + 4 bytes length
-                if len(header) < 12:
+                if not header:
                     break
+                if len(header) != 12:
+                    raise ValueError("Incomplete record header")
                 
                 # Unpack header: key (unsigned long long) + length (unsigned int)
                 key, length = struct.unpack('<QI', header)
@@ -26,19 +28,19 @@ def read_records(filename: str) -> List[Tuple[int, bytes]]:
                 # Validate length
                 if length < 8 or length > 4096:  # Assuming PAYLOAD_MAX = 4096
                     print(f"Warning: Invalid payload length {length} at position {f.tell()-12}")
-                    continue
+                    raise ValueError("Invalid record length")
                 
                 # Read payload
                 payload = f.read(length)
                 if len(payload) != length:
                     print(f"Warning: Could not read full payload at position {f.tell()}")
-                    break
+                    raise ValueError("Incomplete record payload")
                 
                 records.append((key, payload))
                 
     except Exception as e:
         print(f"Error reading file {filename}: {e}")
-        return []
+        raise SystemExit(1)
     
     return records
 

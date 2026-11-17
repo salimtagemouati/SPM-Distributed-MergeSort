@@ -1,5 +1,8 @@
 #  Distributed Out-of-Core MergeSort
 
+The standalone OpenMP implementation sorts in memory. Size the input to fit available RAM. The distributed and external-sort variants have separate memory and temporary-storage requirements.
+
+
 [![C++](https://img.shields.io/badge/C++-17-00599C?style=for-the-badge&logo=cplusplus&logoColor=white)](https://isocpp.org/)
 [![OpenMP](https://img.shields.io/badge/OpenMP-4.5+-A5D6A7?style=for-the-badge&logo=openmp&logoColor=black)](https://www.openmp.org/)
 [![MPI](https://img.shields.io/badge/MPI-OpenMPI-2088FF?style=for-the-badge)](https://www.open-mpi.org/)

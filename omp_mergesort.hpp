@@ -23,40 +23,26 @@ private:
 
 public:
     OpenMPMergeSort(int threads) : num_threads_(threads) {
+        if (threads <= 0) throw std::invalid_argument("Thread count must be positive");
         omp_set_num_threads(threads);
         omp_set_dynamic(0);
     }
 
     void sort(const std::string& input, const std::string& output) {
         Timer timer("OpenMP sort total time");
-        size_t file_size = getFileSize(input);
-
-        // Phase 1: Parallel read and local sort
+        std::ifstream in(input, std::ios::binary);
+        if (!in) throw std::runtime_error("Cannot open input file");
         std::vector<ChunkData> chunks(num_threads_);
-        
-        #pragma omp parallel num_threads(num_threads_)
-        {
-            int tid = omp_get_thread_num();
-            std::ifstream in(input, std::ios::binary);
-            if (!in.is_open()) {
-                #pragma omp critical
-                throw std::runtime_error("Cannot open input file in thread " + std::to_string(tid));
-            }
+        size_t next = 0;
+        while (true) {
+            auto record = readRecord(in);
+            if (!record.get()) break;
+            chunks[next].records.emplace_back(std::move(record));
+            next = (next + 1) % chunks.size();
+        }
 
-            chunks[tid].start_pos = tid * (file_size / num_threads_);
-            chunks[tid].end_pos = (tid == num_threads_ - 1) ? file_size : (tid + 1) * (file_size / num_threads_);
-            
-            in.seekg(chunks[tid].start_pos);
-            while (in.tellg() < static_cast<std::streampos>(chunks[tid].end_pos) && in.peek() != EOF) {
-                RecordPtr r;
-                {
-                    std::lock_guard<std::mutex> lock(io_mutex_);
-                    r = readRecord(in);
-                }
-                if (!r.get()) break;
-                chunks[tid].records.emplace_back(std::move(r));
-            }
-            
+        #pragma omp parallel for num_threads(num_threads_)
+        for (int tid = 0; tid < num_threads_; ++tid) {
             // Local sort
             std::sort(chunks[tid].records.begin(), chunks[tid].records.end(),
                 [](const RecordPtr& a, const RecordPtr& b) {
@@ -190,6 +176,8 @@ private:
             if (!r.get()) continue;
             writeRecord(out, r);
         }
+        out.close();
+        if (!out) throw std::runtime_error("Failed to write sorted output");
     }
 
     size_t getFileSize(const std::string& filename) {

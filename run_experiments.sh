@@ -3,7 +3,7 @@
 # Comprehensive test runner for Distributed MergeSort
 # Supports both local and cluster environments
 
-set -e
+set -eo pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -155,7 +155,7 @@ run_openmp_tests() {
         
         print_info "Testing OpenMP with $threads threads..."
         
-        if timeout 300 ./main_openmp "$test_file" "$output" > "$log_file" 2>&1; then
+        if timeout 300 ./openmp_sort "$test_file" "$output" "$threads" > "$log_file" 2>&1; then
             # Verify output
             if python3 verify_output.py "$output" >> "$log_file" 2>&1; then
                 local time_ms=$(grep "Total sort time" "$log_file" | grep -o '[0-9]\+' | tail -1)
@@ -182,7 +182,7 @@ run_fastflow_tests() {
     local output="$RESULTS_DIR/sorted_fastflow.bin"
     local log_file="$RESULTS_DIR/fastflow.log"
     
-    if [ ! -f "./main_fastflow" ]; then
+    if [ ! -f "./fastflow_sort" ]; then
         print_warning "FastFlow binary not found, skipping FastFlow tests"
         return 0
     fi
@@ -194,7 +194,7 @@ run_fastflow_tests() {
     
     print_info "Testing FastFlow implementation..."
     
-    if timeout 300 ./main_fastflow "$test_file" "$output" > "$log_file" 2>&1; then
+    if timeout 300 ./fastflow_sort "$test_file" "$output" 4 > "$log_file" 2>&1; then
         if python3 verify_output.py "$output" >> "$log_file" 2>&1; then
             local time_ms=$(grep "Total sort time" "$log_file" | grep -o '[0-9]\+' | tail -1)
             print_success "FastFlow: ${time_ms}ms ✓"
@@ -228,7 +228,7 @@ run_mpi_tests() {
         return 1
     fi
     
-    if [ ! -f "./hybrid_sort_main" ]; then
+    if [ ! -f "./hybrid_sort" ]; then
         print_warning "MPI binary not found, skipping MPI tests"
         return 0
     fi
@@ -245,7 +245,7 @@ run_mpi_tests() {
         
         print_info "Testing MPI with $ranks ranks..."
         
-        if timeout 600 mpirun -np $ranks ./hybrid_sort_main "$test_file" "$output" > "$log_file" 2>&1; then
+        if timeout 600 mpirun -np $ranks ./hybrid_sort "$test_file" "$output" "$OMP_NUM_THREADS" > "$log_file" 2>&1; then
             if python3 verify_output.py "$output" >> "$log_file" 2>&1; then
                 local time_ms=$(grep "total sort time" "$log_file" | grep -o '[0-9]\+' | tail -1)
                 print_success "MPI $ranks ranks: ${time_ms}ms ✓"

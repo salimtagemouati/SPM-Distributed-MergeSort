@@ -23,7 +23,7 @@ bool verifySort(const std::string& filename) {
         // Read header
         if (!file.read(reinterpret_cast<char*>(&key), sizeof(uint64_t)) ||
             !file.read(reinterpret_cast<char*>(&len), sizeof(uint32_t))) {
-            break; // End of file or read error
+            return false; // Incomplete header
         }
         
         // Validate payload length
@@ -41,8 +41,8 @@ bool verifySort(const std::string& filename) {
         }
         
         // Skip payload
-        file.seekg(len, std::ios::cur);
-        if (file.fail()) {
+        file.ignore(len);
+        if (file.gcount() != len) {
             std::cerr << " Failed to skip payload at record " << record_count << std::endl;
             return false;
         }
@@ -57,6 +57,7 @@ bool verifySort(const std::string& filename) {
         }
     }
     
+    if (file.bad()) return false;
     std::cout << " Sort verification successful!" << std::endl;
     std::cout << " Total records verified: " << record_count << std::endl;
     std::cout << " All records in correct ascending order" << std::endl;

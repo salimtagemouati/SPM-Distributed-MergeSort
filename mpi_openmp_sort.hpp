@@ -110,7 +110,7 @@ private:
         file.seekg(0);
         
         record_offsets_.clear();
-        record_offsets_.push_back(0); // First record starts at offset 0
+        if (file_size) record_offsets_.push_back(0);
         
         uint64_t offset = 0;
         while (offset < file_size) {
@@ -122,17 +122,17 @@ private:
             
             if (!file.read(reinterpret_cast<char*>(&key), sizeof(uint64_t)) ||
                 !file.read(reinterpret_cast<char*>(&len), sizeof(uint32_t))) {
-                break; // End of file or corrupted
+                throw std::runtime_error("Truncated record header");
             }
             
             // Validate payload length
             if (len < PAYLOAD_MIN || len > PAYLOAD_MAX) {
-                std::cerr << "Invalid payload length " << len << " at offset " << offset << std::endl;
-                break;
+                throw std::runtime_error("Invalid record length");
             }
             
             // Move to next record
             offset += HEADER_SIZE + len;
+            if (offset > file_size) throw std::runtime_error("Truncated payload");
             if (offset < file_size) {
                 record_offsets_.push_back(offset);
             }
@@ -187,7 +187,7 @@ private:
                 uint64_t start_record = i * records_per_rank + std::min(static_cast<uint64_t>(i), remainder);
                 uint64_t end_record = start_record + records_per_rank + (i < remainder ? 1 : 0);
                 
-                all_boundaries[i * 2] = record_offsets_[start_record];
+                all_boundaries[i * 2] = start_record < total_records_ ? record_offsets_[start_record] : UINT64_MAX;
                 all_boundaries[i * 2 + 1] = (end_record < total_records_) ? record_offsets_[end_record] : UINT64_MAX;
             }
             
@@ -221,7 +221,7 @@ private:
             uint64_t start_record = rank_ * records_per_rank + std::min(static_cast<uint64_t>(rank_), remainder);
             uint64_t end_record = start_record + records_per_rank + (rank_ < remainder ? 1 : 0);
             
-            uint64_t start_offset = record_offsets_[start_record];
+            uint64_t start_offset = start_record < total_records_ ? record_offsets_[start_record] : UINT64_MAX;
             uint64_t end_offset = (end_record < total_records_) ? record_offsets_[end_record] : UINT64_MAX;
             
             return {start_offset, end_offset};
@@ -244,6 +244,13 @@ private:
             throw std::runtime_error("Cannot stat file: " + input_file);
         }
         
+        if (start_offset == end_offset || file_stat.st_size == 0) {
+            close(fd);
+            std::ofstream empty(output_file, std::ios::binary);
+            if (!empty) throw std::runtime_error("Cannot create empty run");
+            return;
+        }
+
         // Map the entire file read-only
         const char* mapped_data = static_cast<const char*>(
             mmap(nullptr, file_stat.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
@@ -463,11 +470,8 @@ public:
         MPI_Comm_rank(MPI_COMM_WORLD, &rank_);
         
         // Create unique temp directory for this rank (configurable via TMPDIR)
-        const char* tmpdir = std::getenv("TMPDIR");
-        std::string base_dir = tmpdir ? tmpdir : ".";
-        temp_dir_ = base_dir + "/mpi_tmp_" + std::to_string(rank_);
-        fs::create_directories(temp_dir_);
-        
+        temp_dir_ = createSortDirectory();
+
         // Set OpenMP thread affinity for NUMA locality
         if (std::getenv("OMP_PROC_BIND") == nullptr) {
             // Use environment variable since omp_set_proc_bind may not be available

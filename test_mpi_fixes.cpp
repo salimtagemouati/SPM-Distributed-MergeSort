@@ -122,7 +122,8 @@ int main(int argc, char* argv[]) {
                 std::cout << " Memory mapping successful" << std::endl;
                 std::cout << " Portable MPI datatypes used" << std::endl;
             } else {
-                std::cout << " Sort verification FAILED!" << std::endl;
+                std::cerr << "Sort verification failed" << std::endl;
+                MPI_Abort(MPI_COMM_WORLD, 1);
             }
             
             // Cleanup
